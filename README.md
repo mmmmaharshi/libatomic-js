@@ -1,9 +1,10 @@
 # libatomic-js
 
-GCC libatomic's integer builtins, ported to JavaScript on top of `SharedArrayBuffer` + `Atomics`.
+GCC libatomic's integer builtins, ported to TypeScript on top of `SharedArrayBuffer` + `Atomics`.
+Runs on Bun, which strips the types: no build step, no `dist`.
 
-```js
-import { __atomic_fetch_add, __atomic_load_n } from './src/libatomic.js';
+```ts
+import { __atomic_fetch_add, __atomic_load_n } from './src/libatomic.ts';
 
 const counter = new Uint32Array(new SharedArrayBuffer(4));
 __atomic_fetch_add(counter, 0, 1);
@@ -12,8 +13,8 @@ __atomic_load_n(counter, 0); // 1
 
 The typed array replaces libatomic's `(size, ptr)` pair: its element type gives the width
 (1, 2, 4 or 8 bytes) and its construction guarantees the alignment, so the second argument is
-just an index. Types are JSDoc, checked by `npm run typecheck` and shipped as
-`dist/libatomic.d.ts`.
+just an index. Element types flow through: a `BigUint64Array` load returns `bigint`, and
+passing a number to it is a compile error.
 
 ## API
 
@@ -29,7 +30,7 @@ just an index. Types are JSDoc, checked by `npm run typecheck` and shipped as
 Retrying a compare-exchange reads the observed value instead of having it written back the way
 C's `T *expected` works:
 
-```js
+```ts
 for (let expected = 0; ;) {
   const r = __atomic_compare_exchange_n(counter, 0, expected, 7);
   if (r.ok) break;
@@ -59,7 +60,6 @@ for (let expected = 0; ;) {
 ## Verify
 
 ```
-npm test        # behaviour, including cross-thread atomicity
-npm run typecheck
-npm run build   # emits dist/libatomic.d.ts; also runs on install
+bun test              # behaviour, including cross-thread atomicity
+bun run typecheck     # tsc --noEmit over src and the type-only checks
 ```

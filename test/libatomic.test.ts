@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { Worker } from 'node:worker_threads';
 import {
@@ -15,12 +15,12 @@ import {
   __atomic_test_and_set,
   __atomic_clear,
   __atomic_is_lock_free,
-} from '../src/libatomic.js';
+} from '../src/libatomic.ts';
 
-const bytes = (n) => new Uint8Array(new SharedArrayBuffer(n));
-const moduleUrl = new URL('../src/libatomic.js', import.meta.url).href;
+const bytes = (n: number) => new Uint8Array(new SharedArrayBuffer(n));
+const moduleUrl = new URL('../src/libatomic.ts', import.meta.url).href;
 
-const workerSource = (body) => `
+const workerSource = (body: string) => `
   const { parentPort, workerData } = require('node:worker_threads');
   (async () => {
     const m = await import(${JSON.stringify(moduleUrl)});
@@ -29,7 +29,7 @@ const workerSource = (body) => `
     parentPort.postMessage('done');
   })();`;
 
-function runWorkers(source, workerData, count) {
+function runWorkers(source: string, workerData: SharedArrayBuffer, count: number): Promise<unknown[]> {
   return Promise.all(Array.from({ length: count }, () => new Promise((resolve, reject) => {
     const worker = new Worker(source, { eval: true, workerData });
     let reported = false;
@@ -119,7 +119,7 @@ test('reports which widths are lock-free and rejects invalid sizes', () => {
   assert.equal(__atomic_is_lock_free(8), true);
   assert.equal(__atomic_is_lock_free(16), false);
   assert.throws(() => __atomic_is_lock_free(0), RangeError);
-  assert.throws(() => __atomic_is_lock_free('8'), RangeError);
+  assert.throws(() => __atomic_is_lock_free('8' as unknown as number), RangeError);
 });
 
 test('fetch_add is atomic across worker threads', async () => {

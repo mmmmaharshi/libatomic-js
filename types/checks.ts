@@ -1,12 +1,11 @@
-// @ts-check
-// Type-only checks, never run. `npm run typecheck` fails if a line marked as an
+// Type-only checks, never run. `bun run typecheck` fails if a line marked as an
 // expected error starts compiling cleanly, so these assertions cannot rot.
 import {
   __atomic_fetch_nand,
   __atomic_load_n,
   __atomic_store_n,
   __atomic_test_and_set,
-} from '../src/libatomic.js';
+} from '../src/libatomic.ts';
 
 const counter = new Uint32Array(new SharedArrayBuffer(4));
 const wide = new BigUint64Array(new SharedArrayBuffer(8));

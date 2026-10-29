@@ -2,23 +2,10 @@
   "name": "libatomic-js",
   "version": "0.1.0",
   "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/libatomic.d.ts",
-      "default": "./src/libatomic.js"
-    }
-  },
-  "types": "./dist/libatomic.d.ts",
-  "files": [
-    "src",
-    "dist",
-    "README.md"
-  ],
+  "exports": "./src/libatomic.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "prepare": "npm run build",
-    "test": "node --test",
-    "typecheck": "tsc -p tsconfig.json"
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "typescript": "^7.0.2"
