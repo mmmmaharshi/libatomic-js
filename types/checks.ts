@@ -2,8 +2,12 @@
 // expected error starts compiling cleanly, so these assertions cannot rot.
 import {
   addFetch,
-  fetchNand,
+  subFetch,
+  andFetch,
+  orFetch,
+  xorFetch,
   nandFetch,
+  fetchNand,
   load,
   store,
   testAndSet,
@@ -26,6 +30,14 @@ testAndSet(wide, 0);
 testAndSet(new Uint32Array(new SharedArrayBuffer(4)), 0);
 // @ts-expect-error the new-value add follows the view too
 addFetch(counter, 0, 5n);
+// @ts-expect-error the new-value sub follows the view too
+subFetch(counter, 0, 5n);
+// @ts-expect-error the new-value and follows the view too
+andFetch(counter, 0, 5n);
+// @ts-expect-error the new-value or follows the view too
+orFetch(counter, 0, 5n);
+// @ts-expect-error the new-value xor follows the view too
+xorFetch(counter, 0, 5n);
 
 // The element type flows back out, so arithmetic needs no narrowing.
 const small = load(counter, 0) + 1;

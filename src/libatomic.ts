@@ -179,12 +179,13 @@ export function clear(ta: FlagArray, i: number): void {
 
 /**
  * A no-op. Every operation here is sequentially consistent, so a `seq_cst` fence
- * has nothing left to order. Exported so a C call site ports unchanged.
+ * has nothing left to order. Exported so a C call site ports unchanged. The
+ * `memorder` argument is accepted and ignored, matching the rest of the library.
  */
-export function threadFence(): void {}
+export function threadFence(_memorder?: number): void {}
 
 /** A no-op, for the reason given on {@link threadFence}. */
-export function signalFence(): void {}
+export function signalFence(_memorder?: number): void {}
 
 /**
  * Reports whether `size` bytes can be operated on atomically in one step.

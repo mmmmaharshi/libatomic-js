@@ -154,6 +154,13 @@ test('*_fetch carry 64-bit values', () => {
   assert.equal(nandFetch(a, 0, 0n), 0xffffffffffffffffn);
 });
 
+test('*_fetch wrap at 32 bits too', () => {
+  const a = new Int32Array(new SharedArrayBuffer(4));
+  store(a, 0, 2147483647);
+  assert.equal(addFetch(a, 0, 1), -2147483648);
+  assert.equal(subFetch(a, 0, 1), 2147483647);
+});
+
 test('fences and alwaysLockFree exist for parity', () => {
   threadFence();
   signalFence();
