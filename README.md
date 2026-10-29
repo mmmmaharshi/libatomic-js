@@ -21,6 +21,13 @@ is an index. Types follow the element through. A `BigUint64Array` load returns `
 a number to it fails to compile, and a view over a plain `ArrayBuffer` fails to compile because
 it would share nothing with another thread. `tsc --noEmit` checks these rules.
 
+## Runtimes
+
+Deno, Node.js and Bun need no setup. In a browser, `SharedArrayBuffer` only exists on a
+cross-origin isolated page, so serve it with `Cross-Origin-Opener-Policy: same-origin` and
+`Cross-Origin-Embedder-Policy: require-corp`. Cloudflare Workers has no `SharedArrayBuffer`, so it
+is marked unsupported on JSR.
+
 ## API
 
 The names are camelCase instead of GCC's `__atomic_*`, so the library reads like a JS library.
