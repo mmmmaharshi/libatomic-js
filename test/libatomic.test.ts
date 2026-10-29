@@ -12,9 +12,18 @@ import {
   fetchOr,
   fetchXor,
   fetchNand,
+  addFetch,
+  subFetch,
+  andFetch,
+  orFetch,
+  xorFetch,
+  nandFetch,
   testAndSet,
   clear,
+  threadFence,
+  signalFence,
   isLockFree,
+  alwaysLockFree,
 } from '../src/libatomic.ts';
 
 const bytes = (n: number) => new Uint8Array(new SharedArrayBuffer(n));
@@ -112,6 +121,44 @@ test('fetchNand rejects a value of the wrong type', () => {
   const a = new Uint32Array(new SharedArrayBuffer(4));
   // @ts-expect-error a BigInt value is not allowed on a number view
   assert.throws(() => fetchNand(a, 0, 1n), { name: 'TypeError', message: /must match the view/ });
+});
+
+test('addFetch and friends return the new value and wrap at the width', () => {
+  const a = bytes(1);
+  store(a, 0, 250);
+  assert.equal(addFetch(a, 0, 10), 4);
+  assert.equal(subFetch(a, 0, 6), 254);
+  assert.equal(load(a, 0), 254);
+
+  store(a, 0, 0b1100);
+  assert.equal(andFetch(a, 0, 0b1010), 0b1000);
+  assert.equal(orFetch(a, 0, 0b0011), 0b1011);
+  assert.equal(xorFetch(a, 0, 0b1111), 0b0100);
+
+  const s = new Int8Array(new SharedArrayBuffer(1));
+  store(s, 0, 120);
+  assert.equal(addFetch(s, 0, 10), -126);
+});
+
+test('nandFetch returns the stored value', () => {
+  const a = bytes(1);
+  store(a, 0, 0b1100);
+  assert.equal(nandFetch(a, 0, 0b1010), 0b11110111);
+  assert.equal(load(a, 0), 0b11110111);
+});
+
+test('*_fetch carry 64-bit values', () => {
+  const a = new BigUint64Array(new SharedArrayBuffer(8));
+  store(a, 0, 1n);
+  assert.equal(addFetch(a, 0, 2n), 3n);
+  assert.equal(nandFetch(a, 0, 0n), 0xffffffffffffffffn);
+});
+
+test('fences and alwaysLockFree exist for parity', () => {
+  threadFence();
+  signalFence();
+  assert.equal(alwaysLockFree(8), isLockFree(8));
+  assert.equal(alwaysLockFree(16), false);
 });
 
 test('testAndSet and clear drive a flag byte', () => {

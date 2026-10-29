@@ -35,6 +35,9 @@ type Load = <T extends AtomicArray>(ta: T, i: number) => T[number];
 type Store = <T extends AtomicArray>(ta: T, i: number, val: T[number]) => void;
 type Fetch = <T extends AtomicArray>(ta: T, i: number, val: T[number]) => T[number];
 
+const isBig = (ta: AtomicArray): boolean =>
+  ta instanceof BigInt64Array || ta instanceof BigUint64Array;
+
 const cas = Atomics.compareExchange as <T extends AtomicArray>(
   ta: T,
   i: number,
@@ -84,25 +87,84 @@ export const fetchOr = Atomics.or as Fetch;
 /** Bitwise XORs `val` and returns the previous value. */
 export const fetchXor = Atomics.xor as Fetch;
 
+// Atomics wraps what it stores to the element width but hands back the old
+// value, so the new one needs the same wrap to match what was kept.
+function wrap<T extends AtomicArray>(ta: T, v: number | bigint): T[number] {
+  if (typeof v === 'bigint') {
+    return (ta instanceof BigInt64Array ? BigInt.asIntN(64, v) : BigInt.asUintN(64, v)) as T[number];
+  }
+  const width = 2 ** (ta.BYTES_PER_ELEMENT * 8);
+  const u = ((v % width) + width) % width;
+  const signed = ta instanceof Int8Array || ta instanceof Int16Array || ta instanceof Int32Array;
+  return (signed && u >= width / 2 ? u - width : u) as T[number];
+}
+
+/** Adds `val` and returns the new value. */
+export function addFetch<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number] {
+  const old = fetchAdd(ta, i, val);
+  return wrap(ta, isBig(ta) ? (old as bigint) + (val as bigint) : (old as number) + (val as number));
+}
+
+/** Subtracts `val` and returns the new value. */
+export function subFetch<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number] {
+  const old = fetchSub(ta, i, val);
+  return wrap(ta, isBig(ta) ? (old as bigint) - (val as bigint) : (old as number) - (val as number));
+}
+
+/** Bitwise ANDs `val` and returns the new value. */
+export function andFetch<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number] {
+  const old = fetchAnd(ta, i, val);
+  return wrap(ta, isBig(ta) ? (old as bigint) & (val as bigint) : (old as number) & (val as number));
+}
+
+/** Bitwise ORs `val` and returns the new value. */
+export function orFetch<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number] {
+  const old = fetchOr(ta, i, val);
+  return wrap(ta, isBig(ta) ? (old as bigint) | (val as bigint) : (old as number) | (val as number));
+}
+
+/** Bitwise XORs `val` and returns the new value. */
+export function xorFetch<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number] {
+  const old = fetchXor(ta, i, val);
+  return wrap(ta, isBig(ta) ? (old as bigint) ^ (val as bigint) : (old as number) ^ (val as number));
+}
+
+// No Atomics.nand, so read-modify-write by hand: ptr = ~(old & val).
+function nand<T extends AtomicArray>(
+  ta: T,
+  i: number,
+  val: T[number],
+): { old: T[number]; next: T[number] } {
+  if (isBig(ta) !== (typeof val === 'bigint')) {
+    throw new TypeError('nand: value type must match the view');
+  }
+  for (let old = load(ta, i); ; ) {
+    const raw = isBig(ta)
+      ? ~((old as bigint) & (val as bigint))
+      : ~((old as number) & (val as number));
+    const next = wrap(ta, raw);
+    const got = cas(ta, i, old, next);
+    if (got === old) return { old, next };
+    old = got;
+  }
+}
+
 /**
- * Stores `~(old & val)` and returns the previous value, using a CAS loop
- * because `Atomics` has no `nand`.
+ * Stores `~(old & val)` and returns the previous value.
  *
  * @throws {TypeError} when `val` is a BigInt for a number view, or the reverse.
  */
 export function fetchNand<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number] {
-  const isBig = ta instanceof BigInt64Array || ta instanceof BigUint64Array;
-  if (isBig !== (typeof val === 'bigint')) {
-    throw new TypeError('fetchNand: value type must match the view');
-  }
-  for (let old = load(ta, i); ; ) {
-    const next = (
-      isBig ? ~((old as bigint) & (val as bigint)) : ~((old as number) & (val as number))
-    ) as T[number];
-    const got = cas(ta, i, old, next);
-    if (got === old) return old;
-    old = got;
-  }
+  return nand(ta, i, val).old;
+}
+
+/**
+ * Stores `~(old & val)` and returns the new value.
+ *
+ * @throws {TypeError} when `val` is a BigInt for a number view, or the reverse.
+ */
+export function nandFetch<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number] {
+  return nand(ta, i, val).next;
 }
 
 /** Sets the flag byte at `i` to 1 and reports whether it was already set. */
@@ -115,8 +177,14 @@ export function clear(ta: FlagArray, i: number): void {
   Atomics.store(ta, i, 0);
 }
 
-// C's fences have no JS equivalent, and per-operation seq_cst makes them
-// redundant, so they are deliberately absent rather than exported as no-ops.
+/**
+ * A no-op. Every operation here is sequentially consistent, so a `seq_cst` fence
+ * has nothing left to order. Exported so a C call site ports unchanged.
+ */
+export function threadFence(): void {}
+
+/** A no-op, for the reason given on {@link threadFence}. */
+export function signalFence(): void {}
 
 /**
  * Reports whether `size` bytes can be operated on atomically in one step.
@@ -129,3 +197,6 @@ export function isLockFree(size: number): boolean {
   }
   return size === 1 || size === 2 || size === 4 || size === 8;
 }
+
+/** C asks this at compile time; JS can only give the {@link isLockFree} answer. */
+export const alwaysLockFree = isLockFree;

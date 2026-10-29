@@ -42,6 +42,10 @@ The right column is the whole mapping you need when porting a C call site.
 | `fetchAdd` / `fetchSub` / `fetchAnd` / `fetchOr` / `fetchXor` | `__atomic_fetch_add`, `_sub`, `_and`, `_or`, `_xor` | return the previous value |
 | `fetchNand` | `__atomic_fetch_nand` | a CAS loop, because `Atomics` has no `nand` |
 | `testAndSet` / `clear` | `__atomic_test_and_set`, `__atomic_clear` | byte views only, `Int8Array` or `Uint8Array`, because C addresses one byte |
+| `addFetch` / `subFetch` / `andFetch` / `orFetch` / `xorFetch` | `__atomic_add_fetch`, `_sub_fetch`, `_and_fetch`, `_or_fetch`, `_xor_fetch` | return the new value |
+| `nandFetch` | `__atomic_nand_fetch` | return the new value; a CAS loop |
+| `threadFence`, `signalFence` | `__atomic_thread_fence`, `__atomic_signal_fence` | no-ops: every operation is already sequentially consistent, so a fence has nothing left to order |
+| `alwaysLockFree` | `__atomic_always_lock_free` | same answer as `isLockFree`; JS has no compile-time variant to offer |
 | `isLockFree` | `__atomic_is_lock_free` | true for 1, 2, 4 and 8 byte sizes. Throws on a non-positive or non-integer size |
 
 Retrying a compare-exchange reads the value it observed. C writes that value back through
@@ -68,11 +72,11 @@ for (let expected = 0; ;) {
   `-1` matches. Compare against the value a load returned and the difference never comes up.
 - Not ported:
   - 16-byte `__int128` operations, because JS has no 16-byte atomic.
-  - `__atomic_thread_fence` and `__atomic_signal_fence`. They have no JS equivalent, and
-    operation-level seq_cst makes them redundant. Leaving them out beats exporting no-ops.
-  - `__atomic_always_lock_free`, a compile-time constant, and the generic memory-buffer forms
-    `__atomic_load`, `__atomic_store` and `__atomic_compare_exchange`. They add nothing once the
-    typed array carries the size.
+  - The generic memory-buffer forms `__atomic_load`, `__atomic_store` and `__atomic_compare_exchange`.
+    They take a `(size, ptr)` pair and work on any data type, but the typed array already carries
+    the size and the element type, so those are the same call with the size removed.
+  - `__atomic_thread_fence` and `__atomic_signal_fence` are exported as no-ops, because every
+    operation here is sequentially consistent and there is nothing left for a fence to order.
 
 ## Verify
 

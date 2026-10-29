@@ -2,6 +2,7 @@
 // expected error starts compiling cleanly, so these assertions cannot rot.
 import {
   fetchNand,
+  nandFetch,
   load,
   store,
   testAndSet,
@@ -16,6 +17,8 @@ store(wide, 0, 5);
 store(counter, 0, 5n);
 // @ts-expect-error the nand value follows the view too
 fetchNand(counter, 0, 5n);
+// @ts-expect-error the new-value nand follows the view too
+nandFetch(counter, 0, 5n);
 // @ts-expect-error flag helpers take byte views, not BigInt views
 testAndSet(wide, 0);
 // @ts-expect-error a 32-bit flag view would clobber the rest of the word
