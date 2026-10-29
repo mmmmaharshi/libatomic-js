@@ -1,9 +1,17 @@
-// GCC libatomic's integer builtins, ported to JavaScript. See README for the
-// C differences that are not visible from a single call.
-//
-// The typed array carries the size (1/2/4/8 bytes) and guarantees the alignment
-// the C API only assumes, so libatomic's (size, ptr) pair collapses into it.
+/**
+ * GCC libatomic's integer builtins, ported to JavaScript. See the README for the
+ * C differences that are not visible from a single call.
+ *
+ * The typed array carries the size (1/2/4/8 bytes) and guarantees the alignment
+ * the C API only assumes, so libatomic's (size, ptr) pair collapses into it.
+ *
+ * @module
+ */
 
+/**
+ * A view over a `SharedArrayBuffer` whose elements can be operated on
+ * atomically. The element type sets the width.
+ */
 export type AtomicArray =
   | Int8Array<SharedArrayBuffer>
   | Uint8Array<SharedArrayBuffer>
@@ -14,7 +22,10 @@ export type AtomicArray =
   | BigInt64Array<SharedArrayBuffer>
   | BigUint64Array<SharedArrayBuffer>;
 
-// C's flag operations address a single byte, so only byte views are accepted.
+/**
+ * A byte view, for the flag helpers. C's flag operations address a single byte,
+ * so a wider view is rejected even though it is atomic.
+ */
 export type FlagArray = Int8Array<SharedArrayBuffer> | Uint8Array<SharedArrayBuffer>;
 
 // Atomics accepts any buffer and its overloads reject a union of number and
@@ -31,12 +42,23 @@ const cas = Atomics.compareExchange as <T extends AtomicArray>(
   desired: T[number],
 ) => T[number];
 
+/** Reads the element at `i`. */
 export const load = Atomics.load as Load;
+
+/** Writes `val` to `i`. */
 export const store = Atomics.store as Store;
+
+/** Writes `val` to `i` and returns the value it replaced. */
 export const exchange = Atomics.exchange as Fetch;
 
-// No `weak` argument: a single attempt can never fail spuriously. The result is
-// discriminated instead of being written back into `expected` like C does.
+/**
+ * Writes `desired` to `i` only if the element still holds `expected`.
+ *
+ * No `weak` argument: a single attempt can never fail spuriously. The result is
+ * discriminated instead of being written back into `expected` like C does.
+ *
+ * @returns `{ ok: true }`, or `{ ok: false, expected }` with the value found.
+ */
 export function compareExchange<T extends AtomicArray>(
   ta: T,
   i: number,
@@ -47,13 +69,27 @@ export function compareExchange<T extends AtomicArray>(
   return got === expected ? { ok: true } : { ok: false, expected: got };
 }
 
+/** Adds `val` and returns the previous value. */
 export const fetchAdd = Atomics.add as Fetch;
+
+/** Subtracts `val` and returns the previous value. */
 export const fetchSub = Atomics.sub as Fetch;
+
+/** Bitwise ANDs `val` and returns the previous value. */
 export const fetchAnd = Atomics.and as Fetch;
+
+/** Bitwise ORs `val` and returns the previous value. */
 export const fetchOr = Atomics.or as Fetch;
+
+/** Bitwise XORs `val` and returns the previous value. */
 export const fetchXor = Atomics.xor as Fetch;
 
-// No Atomics.nand, so read-modify-write by hand: ptr = ~(old & val).
+/**
+ * Stores `~(old & val)` and returns the previous value, using a CAS loop
+ * because `Atomics` has no `nand`.
+ *
+ * @throws {TypeError} when `val` is a BigInt for a number view, or the reverse.
+ */
 export function fetchNand<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number] {
   const isBig = ta instanceof BigInt64Array || ta instanceof BigUint64Array;
   if (isBig !== (typeof val === 'bigint')) {
@@ -69,11 +105,12 @@ export function fetchNand<T extends AtomicArray>(ta: T, i: number, val: T[number
   }
 }
 
-// Returns true when the flag was already set, matching C.
+/** Sets the flag byte at `i` to 1 and reports whether it was already set. */
 export function testAndSet(ta: FlagArray, i: number): boolean {
   return Atomics.exchange(ta, i, 1) !== 0;
 }
 
+/** Sets the flag byte at `i` to 0. */
 export function clear(ta: FlagArray, i: number): void {
   Atomics.store(ta, i, 0);
 }
@@ -81,6 +118,11 @@ export function clear(ta: FlagArray, i: number): void {
 // C's fences have no JS equivalent, and per-operation seq_cst makes them
 // redundant, so they are deliberately absent rather than exported as no-ops.
 
+/**
+ * Reports whether `size` bytes can be operated on atomically in one step.
+ *
+ * @throws {RangeError} when `size` is not a positive integer.
+ */
 export function isLockFree(size: number): boolean {
   if (!Number.isInteger(size) || size < 1) {
     throw new RangeError(`invalid size: ${size}`);
