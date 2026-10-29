@@ -1,0 +1,13 @@
+{
+  "name": "libatomic-js",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./src/libatomic.js",
+  "scripts": {
+    "test": "node --test",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}
