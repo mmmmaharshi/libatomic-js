@@ -1,6 +1,7 @@
 // Type-only checks, never run. `bun run typecheck` fails if a line marked as an
 // expected error starts compiling cleanly, so these assertions cannot rot.
 import {
+  addFetch,
   fetchNand,
   nandFetch,
   load,
@@ -23,8 +24,8 @@ nandFetch(counter, 0, 5n);
 testAndSet(wide, 0);
 // @ts-expect-error a 32-bit flag view would clobber the rest of the word
 testAndSet(new Uint32Array(new SharedArrayBuffer(4)), 0);
-// @ts-expect-error a plain ArrayBuffer view shares nothing, so it is not atomic
-load(new Uint32Array(4), 0);
+// @ts-expect-error the new-value add follows the view too
+addFetch(counter, 0, 5n);
 
 // The element type flows back out, so arithmetic needs no narrowing.
 const small = load(counter, 0) + 1;

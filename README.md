@@ -45,8 +45,8 @@ The right column is the whole mapping you need when porting a C call site.
 | `addFetch` / `subFetch` / `andFetch` / `orFetch` / `xorFetch` | `__atomic_add_fetch`, `_sub_fetch`, `_and_fetch`, `_or_fetch`, `_xor_fetch` | return the new value |
 | `nandFetch` | `__atomic_nand_fetch` | return the new value; a CAS loop |
 | `threadFence`, `signalFence` | `__atomic_thread_fence`, `__atomic_signal_fence` | no-ops: every operation is already sequentially consistent, so a fence has nothing left to order |
-| `alwaysLockFree` | `__atomic_always_lock_free` | same answer as `isLockFree`; JS has no compile-time variant to offer |
 | `isLockFree` | `__atomic_is_lock_free` | true for 1, 2, 4 and 8 byte sizes. Throws on a non-positive or non-integer size |
+| `alwaysLockFree` | `__atomic_always_lock_free` | same answer as `isLockFree`; JS has no compile-time variant to offer |
 
 Retrying a compare-exchange reads the value it observed. C writes that value back through
 `T *expected` instead.

@@ -35,8 +35,20 @@ type Load = <T extends AtomicArray>(ta: T, i: number) => T[number];
 type Store = <T extends AtomicArray>(ta: T, i: number, val: T[number]) => void;
 type Fetch = <T extends AtomicArray>(ta: T, i: number, val: T[number]) => T[number];
 
-const isBig = (ta: AtomicArray): boolean =>
+const isBig = (ta: AtomicArray): ta is BigInt64Array<SharedArrayBuffer> | BigUint64Array<SharedArrayBuffer> =>
   ta instanceof BigInt64Array || ta instanceof BigUint64Array;
+
+// Atomics wraps what it stores to the element width but hands back the old
+// value, so the new one needs the same wrap to match what was kept.
+function wrap<T extends AtomicArray>(ta: T, v: number | bigint): T[number] {
+  if (typeof v === 'bigint') {
+    return (ta instanceof BigInt64Array ? BigInt.asIntN(64, v) : BigInt.asUintN(64, v)) as T[number];
+  }
+  const width = 2 ** (ta.BYTES_PER_ELEMENT * 8);
+  const u = ((v % width) + width) % width;
+  const signed = ta instanceof Int8Array || ta instanceof Int16Array || ta instanceof Int32Array;
+  return (signed && u >= width / 2 ? u - width : u) as T[number];
+}
 
 const cas = Atomics.compareExchange as <T extends AtomicArray>(
   ta: T,
@@ -86,18 +98,6 @@ export const fetchOr = Atomics.or as Fetch;
 
 /** Bitwise XORs `val` and returns the previous value. */
 export const fetchXor = Atomics.xor as Fetch;
-
-// Atomics wraps what it stores to the element width but hands back the old
-// value, so the new one needs the same wrap to match what was kept.
-function wrap<T extends AtomicArray>(ta: T, v: number | bigint): T[number] {
-  if (typeof v === 'bigint') {
-    return (ta instanceof BigInt64Array ? BigInt.asIntN(64, v) : BigInt.asUintN(64, v)) as T[number];
-  }
-  const width = 2 ** (ta.BYTES_PER_ELEMENT * 8);
-  const u = ((v % width) + width) % width;
-  const signed = ta instanceof Int8Array || ta instanceof Int16Array || ta instanceof Int32Array;
-  return (signed && u >= width / 2 ? u - width : u) as T[number];
-}
 
 /** Adds `val` and returns the new value. */
 export function addFetch<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number] {
