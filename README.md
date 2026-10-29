@@ -3,8 +3,12 @@
 TypeScript port of GCC libatomic's integer builtins. It runs on `SharedArrayBuffer` and `Atomics`,
 and Bun strips the types at run time, so there is no build step and no `dist`.
 
+```
+bunx jsr add @maharshi/libatomic-js
+```
+
 ```ts
-import { fetchAdd, load } from './src/libatomic.ts';
+import { fetchAdd, load } from '@maharshi/libatomic-js';
 
 const counter = new Uint32Array(new SharedArrayBuffer(4));
 fetchAdd(counter, 0, 1);
