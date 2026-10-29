@@ -25,7 +25,7 @@ would share nothing with another thread. Types are checked by `tsc --noEmit`.
 | `__atomic_compare_exchange_n` | returns `{ ok: true }`, or `{ ok: false, expected }` with the value found. No `weak` argument: one attempt never fails spuriously |
 | `__atomic_fetch_add` / `_sub` / `_and` / `_or` / `_xor` | return the previous value |
 | `__atomic_fetch_nand` | CAS loop, since `Atomics` has no `nand` |
-| `__atomic_test_and_set`, `__atomic_clear` | flag-byte helpers; take 8/16/32-bit views, not BigInt views |
+| `__atomic_test_and_set`, `__atomic_clear` | flag-byte helpers; take `Int8Array`/`Uint8Array` views, since C addresses one byte |
 | `__atomic_is_lock_free` | true for sizes 1/2/4/8; throws on a non-positive or non-integer size |
 
 Retrying a compare-exchange reads the observed value instead of having it written back the way

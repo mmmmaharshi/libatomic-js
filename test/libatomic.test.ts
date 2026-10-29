@@ -26,7 +26,7 @@ const LOAD = '__atomic_load_n' satisfies keyof Api;
 const FETCH_ADD = '__atomic_fetch_add' satisfies keyof Api;
 const COMPARE_EXCHANGE = '__atomic_compare_exchange_n' satisfies keyof Api;
 
-const workerSource = (body: string) => `
+const counterWorker = (body: string) => `
   const { parentPort, workerData } = require('node:worker_threads');
   (async () => {
     const m = await import(${JSON.stringify(moduleUrl)});
@@ -35,13 +35,13 @@ const workerSource = (body: string) => `
     parentPort.postMessage('done');
   })();`;
 
-function runWorkers(source: string, workerData: SharedArrayBuffer, count: number): Promise<unknown[]> {
-  return Promise.all(Array.from({ length: count }, () => new Promise((resolve, reject) => {
+async function runWorkers(source: string, workerData: SharedArrayBuffer, count: number): Promise<void> {
+  await Promise.all(Array.from({ length: count }, () => new Promise<void>((resolve, reject) => {
     const worker = new Worker(source, { eval: true, workerData });
     let reported = false;
-    worker.once('message', (m) => {
+    worker.once('message', () => {
       reported = true;
-      resolve(m);
+      resolve();
     });
     worker.once('error', reject);
     worker.once('exit', (code) => {
@@ -132,7 +132,7 @@ test('reports which widths are lock-free and rejects invalid sizes', () => {
 
 test('fetch_add is atomic across worker threads', async () => {
   const sab = new SharedArrayBuffer(4);
-  const source = workerSource(`for (let i = 0; i < 20000; i++) m.${FETCH_ADD}(a, 0, 1);`);
+  const source = counterWorker(`for (let i = 0; i < 20000; i++) m.${FETCH_ADD}(a, 0, 1);`);
 
   await runWorkers(source, sab, 4);
 
@@ -141,7 +141,7 @@ test('fetch_add is atomic across worker threads', async () => {
 
 test('compare_exchange retry loop converges across worker threads', async () => {
   const sab = new SharedArrayBuffer(4);
-  const source = workerSource(`
+  const source = counterWorker(`
     for (let n = 0; n < 5000; n++) {
       for (let expected = m.${LOAD}(a, 0); ;) {
         const r = m.${COMPARE_EXCHANGE}(a, 0, expected, expected + 1);

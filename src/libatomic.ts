@@ -14,10 +14,8 @@ export type AtomicArray =
   | BigInt64Array<SharedArrayBuffer>
   | BigUint64Array<SharedArrayBuffer>;
 
-export type FlagArray = Exclude<
-  AtomicArray,
-  BigInt64Array<SharedArrayBuffer> | BigUint64Array<SharedArrayBuffer>
->;
+// C's flag operations address a single byte, so only byte views are accepted.
+export type FlagArray = Int8Array<SharedArrayBuffer> | Uint8Array<SharedArrayBuffer>;
 
 // Atomics accepts any buffer and its overloads reject a union of number and
 // BigInt views, so each ported name is that function with the shared-buffer
@@ -63,7 +61,7 @@ export function __atomic_fetch_nand<T extends AtomicArray>(ta: T, i: number, val
   }
   for (let old = __atomic_load_n(ta, i); ; ) {
     const next = (
-      typeof old === 'bigint' ? ~(old & (val as bigint)) : ~(old & (val as number))
+      isBig ? ~((old as bigint) & (val as bigint)) : ~((old as number) & (val as number))
     ) as T[number];
     const got = compareExchange(ta, i, old, next);
     if (got === old) return old;

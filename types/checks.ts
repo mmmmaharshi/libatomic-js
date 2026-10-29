@@ -18,6 +18,8 @@ __atomic_store_n(counter, 0, 5n);
 __atomic_fetch_nand(counter, 0, 5n);
 // @ts-expect-error flag helpers take byte views, not BigInt views
 __atomic_test_and_set(wide, 0);
+// @ts-expect-error a 32-bit flag view would clobber the rest of the word
+__atomic_test_and_set(new Uint32Array(new SharedArrayBuffer(4)), 0);
 // @ts-expect-error a plain ArrayBuffer view shares nothing, so it is not atomic
 __atomic_load_n(new Uint32Array(4), 0);
 
