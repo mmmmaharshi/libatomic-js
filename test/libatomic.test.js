@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Worker } from 'node:worker_threads';
 import {
-  __ATOMIC_RELAXED,
   __atomic_load_n,
   __atomic_store_n,
   __atomic_exchange_n,
@@ -19,6 +18,31 @@ import {
 } from '../src/libatomic.js';
 
 const bytes = (n) => new Uint8Array(new SharedArrayBuffer(n));
+const moduleUrl = new URL('../src/libatomic.js', import.meta.url).href;
+
+const workerSource = (body) => `
+  const { parentPort, workerData } = require('node:worker_threads');
+  (async () => {
+    const m = await import(${JSON.stringify(moduleUrl)});
+    const a = new Uint32Array(workerData);
+    ${body}
+    parentPort.postMessage('done');
+  })();`;
+
+function runWorkers(source, workerData, count) {
+  return Promise.all(Array.from({ length: count }, () => new Promise((resolve, reject) => {
+    const worker = new Worker(source, { eval: true, workerData });
+    let reported = false;
+    worker.once('message', (m) => {
+      reported = true;
+      resolve(m);
+    });
+    worker.once('error', reject);
+    worker.once('exit', (code) => {
+      if (!reported) reject(new Error(`worker exited (${code}) without reporting`));
+    });
+  })));
+}
 
 test('load and store', () => {
   const a = bytes(1);
@@ -78,19 +102,17 @@ test('fetch_nand carries 64-bit values', () => {
   assert.equal(__atomic_load_n(a, 0), 0xfffffffffffffff7n);
 });
 
+test('fetch_nand rejects a value of the wrong type', () => {
+  const a = new Uint32Array(new SharedArrayBuffer(4));
+  assert.throws(() => __atomic_fetch_nand(a, 0, 1n), TypeError);
+});
+
 test('test_and_set and clear drive a flag byte', () => {
   const a = bytes(1);
   assert.equal(__atomic_test_and_set(a, 0), false);
   assert.equal(__atomic_test_and_set(a, 0), true);
   __atomic_clear(a, 0);
   assert.equal(__atomic_load_n(a, 0), 0);
-});
-
-test('rejects invalid memory orders', () => {
-  const a = bytes(4);
-  assert.equal(__atomic_load_n(a, 0, __ATOMIC_RELAXED), 0);
-  assert.throws(() => __atomic_load_n(a, 0, 6), RangeError);
-  assert.throws(() => __atomic_store_n(a, 0, 1, -1), RangeError);
 });
 
 test('reports which widths are lock-free and rejects invalid sizes', () => {
@@ -101,29 +123,26 @@ test('reports which widths are lock-free and rejects invalid sizes', () => {
 });
 
 test('fetch_add is atomic across worker threads', async () => {
-  const moduleUrl = new URL('../src/libatomic.js', import.meta.url).href;
   const sab = new SharedArrayBuffer(4);
-  const source = `
-    const { parentPort, workerData } = require('node:worker_threads');
-    (async () => {
-      const m = await import(${JSON.stringify(moduleUrl)});
-      const a = new Uint32Array(workerData);
-      for (let i = 0; i < 20000; i++) m.__atomic_fetch_add(a, 0, 1);
-      parentPort.postMessage('done');
-    })();`;
+  const source = workerSource('for (let i = 0; i < 20000; i++) m.__atomic_fetch_add(a, 0, 1);');
 
-  await Promise.all([1, 2, 3, 4].map(() => new Promise((resolve, reject) => {
-    const worker = new Worker(source, { eval: true, workerData: sab });
-    let reported = false;
-    worker.once('message', (m) => {
-      reported = true;
-      resolve(m);
-    });
-    worker.once('error', reject);
-    worker.once('exit', (code) => {
-      if (!reported) reject(new Error(`worker exited (${code}) without reporting`));
-    });
-  })));
+  await runWorkers(source, sab, 4);
 
   assert.equal(new Uint32Array(sab)[0], 80000);
+});
+
+test('compare_exchange retry loop converges across worker threads', async () => {
+  const sab = new SharedArrayBuffer(4);
+  const source = workerSource(`
+    for (let n = 0; n < 5000; n++) {
+      for (let expected = m.__atomic_load_n(a, 0); ;) {
+        const r = m.__atomic_compare_exchange_n(a, 0, expected, expected + 1);
+        if (r.ok) break;
+        expected = r.expected;
+      }
+    }`);
+
+  await runWorkers(source, sab, 4);
+
+  assert.equal(new Uint32Array(sab)[0], 20000);
 });

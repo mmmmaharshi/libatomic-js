@@ -9,5 +9,5 @@
     "moduleResolution": "nodenext",
     "lib": ["ES2022"]
   },
-  "include": ["src/**/*.js"]
+  "include": ["src/**/*.js", "types/**/*.js"]
 }

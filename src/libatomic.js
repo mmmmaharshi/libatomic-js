@@ -5,158 +5,139 @@
 // The typed array carries the size (1/2/4/8 bytes) and guarantees the alignment
 // the C API only assumes, so libatomic's (size, ptr) pair collapses into it.
 
-export const __ATOMIC_RELAXED = 0;
-export const __ATOMIC_CONSUME = 1;
-export const __ATOMIC_ACQUIRE = 2;
-export const __ATOMIC_RELEASE = 3;
-export const __ATOMIC_ACQ_REL = 4;
-export const __ATOMIC_SEQ_CST = 5;
-
 /** @typedef {Int8Array | Uint8Array | Int16Array | Uint16Array | Int32Array | Uint32Array | BigInt64Array | BigUint64Array} AtomicArray */
+/** @typedef {Exclude<AtomicArray, BigInt64Array | BigUint64Array>} FlagArray */
 
 // Atomics' overloads reject a union of number and BigInt views, so the shared
-// signatures are asserted once here instead of at every call site.
+// signatures are asserted once here and keep the element type of the view.
 const ops = /** @type {{
-  load(ta: AtomicArray, i: number): number | bigint,
-  store(ta: AtomicArray, i: number, val: number | bigint): void,
-  exchange(ta: AtomicArray, i: number, val: number | bigint): number | bigint,
-  compareExchange(ta: AtomicArray, i: number, expected: number | bigint, desired: number | bigint): number | bigint,
-  add(ta: AtomicArray, i: number, val: number | bigint): number | bigint,
-  sub(ta: AtomicArray, i: number, val: number | bigint): number | bigint,
-  and(ta: AtomicArray, i: number, val: number | bigint): number | bigint,
-  or(ta: AtomicArray, i: number, val: number | bigint): number | bigint,
-  xor(ta: AtomicArray, i: number, val: number | bigint): number | bigint,
+  load<T extends AtomicArray>(ta: T, i: number): T[number],
+  store<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number],
+  exchange<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number],
+  compareExchange<T extends AtomicArray>(ta: T, i: number, expected: T[number], desired: T[number]): T[number],
+  add<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number],
+  sub<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number],
+  and<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number],
+  or<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number],
+  xor<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number],
 }} */ (Atomics);
 
-/** @param {number} order */
-function checkOrder(order) {
-  if (!Number.isInteger(order) || order < __ATOMIC_RELAXED || order > __ATOMIC_SEQ_CST) {
-    throw new RangeError(`invalid memory order: ${order}`);
-  }
-}
-
 /**
- * @param {AtomicArray} ta
+ * @template {AtomicArray} T
+ * @param {T} ta
  * @param {number} i
- * @param {number} [order]
- * @returns {number | bigint}
+ * @returns {T[number]}
  */
-export function __atomic_load_n(ta, i, order = __ATOMIC_SEQ_CST) {
-  checkOrder(order);
+export function __atomic_load_n(ta, i) {
   return ops.load(ta, i);
 }
 
 /**
- * @param {AtomicArray} ta
+ * @template {AtomicArray} T
+ * @param {T} ta
  * @param {number} i
- * @param {number | bigint} val
- * @param {number} [order]
+ * @param {T[number]} val
  */
-export function __atomic_store_n(ta, i, val, order = __ATOMIC_SEQ_CST) {
-  checkOrder(order);
+export function __atomic_store_n(ta, i, val) {
   ops.store(ta, i, val);
 }
 
 /**
- * @param {AtomicArray} ta
+ * @template {AtomicArray} T
+ * @param {T} ta
  * @param {number} i
- * @param {number | bigint} val
- * @param {number} [order]
- * @returns {number | bigint}
+ * @param {T[number]} val
+ * @returns {T[number]}
  */
-export function __atomic_exchange_n(ta, i, val, order = __ATOMIC_SEQ_CST) {
-  checkOrder(order);
+export function __atomic_exchange_n(ta, i, val) {
   return ops.exchange(ta, i, val);
 }
 
 // No `weak` argument: a single attempt can never fail spuriously. The result is
 // discriminated instead of being written back into `expected` like C does.
 /**
- * @param {AtomicArray} ta
+ * @template {AtomicArray} T
+ * @param {T} ta
  * @param {number} i
- * @param {number | bigint} expected
- * @param {number | bigint} desired
- * @param {number} [order]
- * @returns {{ ok: true } | { ok: false, expected: number | bigint }}
+ * @param {T[number]} expected
+ * @param {T[number]} desired
+ * @returns {{ ok: true } | { ok: false, expected: T[number] }}
  */
-export function __atomic_compare_exchange_n(ta, i, expected, desired, order = __ATOMIC_SEQ_CST) {
-  checkOrder(order);
+export function __atomic_compare_exchange_n(ta, i, expected, desired) {
   const got = ops.compareExchange(ta, i, expected, desired);
   return got === expected ? { ok: true } : { ok: false, expected: got };
 }
 
 /**
- * @param {AtomicArray} ta
+ * @template {AtomicArray} T
+ * @param {T} ta
  * @param {number} i
- * @param {number | bigint} val
- * @param {number} [order]
- * @returns {number | bigint}
+ * @param {T[number]} val
+ * @returns {T[number]}
  */
-export function __atomic_fetch_add(ta, i, val, order = __ATOMIC_SEQ_CST) {
-  checkOrder(order);
+export function __atomic_fetch_add(ta, i, val) {
   return ops.add(ta, i, val);
 }
 
 /**
- * @param {AtomicArray} ta
+ * @template {AtomicArray} T
+ * @param {T} ta
  * @param {number} i
- * @param {number | bigint} val
- * @param {number} [order]
- * @returns {number | bigint}
+ * @param {T[number]} val
+ * @returns {T[number]}
  */
-export function __atomic_fetch_sub(ta, i, val, order = __ATOMIC_SEQ_CST) {
-  checkOrder(order);
+export function __atomic_fetch_sub(ta, i, val) {
   return ops.sub(ta, i, val);
 }
 
 /**
- * @param {AtomicArray} ta
+ * @template {AtomicArray} T
+ * @param {T} ta
  * @param {number} i
- * @param {number | bigint} val
- * @param {number} [order]
- * @returns {number | bigint}
+ * @param {T[number]} val
+ * @returns {T[number]}
  */
-export function __atomic_fetch_and(ta, i, val, order = __ATOMIC_SEQ_CST) {
-  checkOrder(order);
+export function __atomic_fetch_and(ta, i, val) {
   return ops.and(ta, i, val);
 }
 
 /**
- * @param {AtomicArray} ta
+ * @template {AtomicArray} T
+ * @param {T} ta
  * @param {number} i
- * @param {number | bigint} val
- * @param {number} [order]
- * @returns {number | bigint}
+ * @param {T[number]} val
+ * @returns {T[number]}
  */
-export function __atomic_fetch_or(ta, i, val, order = __ATOMIC_SEQ_CST) {
-  checkOrder(order);
+export function __atomic_fetch_or(ta, i, val) {
   return ops.or(ta, i, val);
 }
 
 /**
- * @param {AtomicArray} ta
+ * @template {AtomicArray} T
+ * @param {T} ta
  * @param {number} i
- * @param {number | bigint} val
- * @param {number} [order]
- * @returns {number | bigint}
+ * @param {T[number]} val
+ * @returns {T[number]}
  */
-export function __atomic_fetch_xor(ta, i, val, order = __ATOMIC_SEQ_CST) {
-  checkOrder(order);
+export function __atomic_fetch_xor(ta, i, val) {
   return ops.xor(ta, i, val);
 }
 
 // No Atomics.nand, so read-modify-write by hand: ptr = ~(old & val).
 /**
- * @param {AtomicArray} ta
+ * @template {AtomicArray} T
+ * @param {T} ta
  * @param {number} i
- * @param {number | bigint} val
- * @param {number} [order]
- * @returns {number | bigint}
+ * @param {T[number]} val
+ * @returns {T[number]}
  */
-export function __atomic_fetch_nand(ta, i, val, order = __ATOMIC_SEQ_CST) {
-  checkOrder(order);
+export function __atomic_fetch_nand(ta, i, val) {
   for (let old = ops.load(ta, i); ; ) {
-    const next = typeof old === 'bigint' ? ~(old & BigInt(val)) : ~(old & Number(val));
+    // The assertions and casts only satisfy tsc: a val of the wrong type still
+    // throws, because JS will not mix number and bigint in one operator.
+    const next = /** @type {T[number]} */ (
+      typeof old === 'bigint' ? ~(old & /** @type {bigint} */ (val)) : ~(old & /** @type {number} */ (val))
+    );
     const got = ops.compareExchange(ta, i, old, next);
     if (got === old) return old;
     old = got;
@@ -165,23 +146,19 @@ export function __atomic_fetch_nand(ta, i, val, order = __ATOMIC_SEQ_CST) {
 
 // Returns true when the flag was already set, matching C.
 /**
- * @param {AtomicArray} ta
+ * @param {FlagArray} ta
  * @param {number} i
- * @param {number} [order]
  * @returns {boolean}
  */
-export function __atomic_test_and_set(ta, i, order = __ATOMIC_SEQ_CST) {
-  checkOrder(order);
+export function __atomic_test_and_set(ta, i) {
   return ops.exchange(ta, i, 1) !== 0;
 }
 
 /**
- * @param {AtomicArray} ta
+ * @param {FlagArray} ta
  * @param {number} i
- * @param {number} [order]
  */
-export function __atomic_clear(ta, i, order = __ATOMIC_SEQ_CST) {
-  checkOrder(order);
+export function __atomic_clear(ta, i) {
   ops.store(ta, i, 0);
 }
 
