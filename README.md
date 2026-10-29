@@ -1,7 +1,7 @@
 # libatomic-js
 
-GCC libatomic's integer builtins, ported to TypeScript on top of `SharedArrayBuffer` + `Atomics`.
-Runs on Bun, which strips the types: no build step, no `dist`.
+TypeScript port of GCC libatomic's integer builtins. It runs on `SharedArrayBuffer` and `Atomics`,
+and Bun strips the types at run time, so there is no build step and no `dist`.
 
 ```ts
 import { __atomic_fetch_add, __atomic_load_n } from './src/libatomic.ts';
@@ -11,25 +11,25 @@ __atomic_fetch_add(counter, 0, 1);
 __atomic_load_n(counter, 0); // 1
 ```
 
-The typed array replaces libatomic's `(size, ptr)` pair: its element type gives the width
-(1, 2, 4 or 8 bytes) and its construction guarantees the alignment, so the second argument is
-just an index. Element types flow through: a `BigUint64Array` load returns `bigint`, passing a
-number to it is a compile error, and a view over a plain `ArrayBuffer` is rejected because it
-would share nothing with another thread. Types are checked by `tsc --noEmit`.
+A typed array replaces libatomic's `(size, ptr)` pair. Its element type gives the width, 1, 2, 4
+or 8 bytes, and its construction fixes the alignment that C only assumes, so the second argument
+is an index. Types follow the element through. A `BigUint64Array` load returns `bigint`, passing
+a number to it fails to compile, and a view over a plain `ArrayBuffer` fails to compile because
+it would share nothing with another thread. `tsc --noEmit` checks these rules.
 
 ## API
 
 | Ported | Notes |
 | --- | --- |
 | `__atomic_load_n`, `__atomic_store_n`, `__atomic_exchange_n` | |
-| `__atomic_compare_exchange_n` | returns `{ ok: true }`, or `{ ok: false, expected }` with the value found. No `weak` argument: one attempt never fails spuriously |
+| `__atomic_compare_exchange_n` | returns `{ ok: true }`, or `{ ok: false, expected }` with the value it found. No `weak` argument, because one attempt never fails spuriously |
 | `__atomic_fetch_add` / `_sub` / `_and` / `_or` / `_xor` | return the previous value |
-| `__atomic_fetch_nand` | CAS loop, since `Atomics` has no `nand` |
-| `__atomic_test_and_set`, `__atomic_clear` | flag-byte helpers; take `Int8Array`/`Uint8Array` views, since C addresses one byte |
-| `__atomic_is_lock_free` | true for sizes 1/2/4/8; throws on a non-positive or non-integer size |
+| `__atomic_fetch_nand` | a CAS loop, because `Atomics` has no `nand` |
+| `__atomic_test_and_set`, `__atomic_clear` | byte views only, `Int8Array` or `Uint8Array`, because C addresses one byte |
+| `__atomic_is_lock_free` | true for 1, 2, 4 and 8 byte sizes. Throws on a non-positive or non-integer size |
 
-Retrying a compare-exchange reads the observed value instead of having it written back the way
-C's `T *expected` works:
+Retrying a compare-exchange reads the value it observed. C writes that value back through
+`T *expected` instead.
 
 ```ts
 for (let expected = 0; ;) {
@@ -41,22 +41,22 @@ for (let expected = 0; ;) {
 
 ## Differences from C
 
-- **Sequentially consistent only, and no `memorder` argument.** Every `Atomics` operation is
-  seq_cst, so there is nothing to tune; a dropped argument would only suggest otherwise. Ported
-  call sites that still pass one keep working, because JS ignores extra arguments.
-- **Values must match the view.** `__atomic_store_n(bigUint64, 0, 5)` is a type error and a
-  runtime `TypeError`; use `5n`. The element type flows back out of the loaders.
-- **Stores wrap, compare-exchanges do not.** `__atomic_store_n(u8, 0, 256)` stores `0`, but
+- Operations are sequentially consistent and take no `memorder` argument. `Atomics` is seq_cst,
+  so there was nothing for that argument to tune. C call sites that still pass one keep working,
+  because JS ignores extra arguments.
+- Values must match the view. `__atomic_store_n(bigUint64, 0, 5)` fails to compile and throws a
+  runtime `TypeError`. Pass `5n` instead.
+- Stores wrap and compare-exchanges do not. `__atomic_store_n(u8, 0, 256)` stores `0`, while
   `__atomic_compare_exchange_n(u8, 0, 256, 1)` compares exactly and reports `ok: false` with
-  `expected: 0`. Signed views behave the same way: `255` and `-1` are one bit pattern, and only
-  `-1` matches. Compare against what a load returned and this never comes up.
-- **Not ported:**
-  - 16-byte (`__int128`) operations — JS has no 16-byte atomic.
-  - `__atomic_thread_fence` / `__atomic_signal_fence` — no JS equivalent, and per-operation
-    seq_cst makes them redundant. Absent rather than exported as silent no-ops.
-  - `__atomic_always_lock_free` (a compile-time constant) and the generic memory-buffer forms
-    (`__atomic_load`, `__atomic_store`, `__atomic_compare_exchange`), which add nothing once
-    the typed array carries the size.
+  `expected: 0`. Signed views work the same way. `255` and `-1` are one bit pattern, and only
+  `-1` matches. Compare against the value a load returned and the difference never comes up.
+- Not ported:
+  - 16-byte `__int128` operations, because JS has no 16-byte atomic.
+  - `__atomic_thread_fence` and `__atomic_signal_fence`. They have no JS equivalent, and
+    operation-level seq_cst makes them redundant. Leaving them out beats exporting no-ops.
+  - `__atomic_always_lock_free`, a compile-time constant, and the generic memory-buffer forms
+    `__atomic_load`, `__atomic_store` and `__atomic_compare_exchange`. They add nothing once the
+    typed array carries the size.
 
 ## Verify
 
