@@ -13,8 +13,9 @@ __atomic_load_n(counter, 0); // 1
 
 The typed array replaces libatomic's `(size, ptr)` pair: its element type gives the width
 (1, 2, 4 or 8 bytes) and its construction guarantees the alignment, so the second argument is
-just an index. Element types flow through: a `BigUint64Array` load returns `bigint`, and
-passing a number to it is a compile error.
+just an index. Element types flow through: a `BigUint64Array` load returns `bigint`, passing a
+number to it is a compile error, and a view over a plain `ArrayBuffer` is rejected because it
+would share nothing with another thread. Types are checked by `tsc --noEmit`.
 
 ## API
 

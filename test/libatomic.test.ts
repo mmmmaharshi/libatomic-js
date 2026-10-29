@@ -20,6 +20,12 @@ import {
 const bytes = (n: number) => new Uint8Array(new SharedArrayBuffer(n));
 const moduleUrl = new URL('../src/libatomic.ts', import.meta.url).href;
 
+// The worker source is a string, so the names it calls are checked here instead.
+type Api = typeof import('../src/libatomic.ts');
+const LOAD = '__atomic_load_n' satisfies keyof Api;
+const FETCH_ADD = '__atomic_fetch_add' satisfies keyof Api;
+const COMPARE_EXCHANGE = '__atomic_compare_exchange_n' satisfies keyof Api;
+
 const workerSource = (body: string) => `
   const { parentPort, workerData } = require('node:worker_threads');
   (async () => {
@@ -104,7 +110,8 @@ test('fetch_nand carries 64-bit values', () => {
 
 test('fetch_nand rejects a value of the wrong type', () => {
   const a = new Uint32Array(new SharedArrayBuffer(4));
-  assert.throws(() => __atomic_fetch_nand(a, 0, 1n), TypeError);
+  // @ts-expect-error a BigInt value is not allowed on a number view
+  assert.throws(() => __atomic_fetch_nand(a, 0, 1n), { name: 'TypeError', message: /must match the view/ });
 });
 
 test('test_and_set and clear drive a flag byte', () => {
@@ -119,12 +126,13 @@ test('reports which widths are lock-free and rejects invalid sizes', () => {
   assert.equal(__atomic_is_lock_free(8), true);
   assert.equal(__atomic_is_lock_free(16), false);
   assert.throws(() => __atomic_is_lock_free(0), RangeError);
-  assert.throws(() => __atomic_is_lock_free('8' as unknown as number), RangeError);
+  // @ts-expect-error a string is not a size
+  assert.throws(() => __atomic_is_lock_free('8'), RangeError);
 });
 
 test('fetch_add is atomic across worker threads', async () => {
   const sab = new SharedArrayBuffer(4);
-  const source = workerSource('for (let i = 0; i < 20000; i++) m.__atomic_fetch_add(a, 0, 1);');
+  const source = workerSource(`for (let i = 0; i < 20000; i++) m.${FETCH_ADD}(a, 0, 1);`);
 
   await runWorkers(source, sab, 4);
 
@@ -135,8 +143,8 @@ test('compare_exchange retry loop converges across worker threads', async () => 
   const sab = new SharedArrayBuffer(4);
   const source = workerSource(`
     for (let n = 0; n < 5000; n++) {
-      for (let expected = m.__atomic_load_n(a, 0); ;) {
-        const r = m.__atomic_compare_exchange_n(a, 0, expected, expected + 1);
+      for (let expected = m.${LOAD}(a, 0); ;) {
+        const r = m.${COMPARE_EXCHANGE}(a, 0, expected, expected + 1);
         if (r.ok) break;
         expected = r.expected;
       }

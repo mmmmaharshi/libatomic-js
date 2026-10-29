@@ -5,42 +5,37 @@
 // the C API only assumes, so libatomic's (size, ptr) pair collapses into it.
 
 export type AtomicArray =
-  | Int8Array
-  | Uint8Array
-  | Int16Array
-  | Uint16Array
-  | Int32Array
-  | Uint32Array
-  | BigInt64Array
-  | BigUint64Array;
+  | Int8Array<SharedArrayBuffer>
+  | Uint8Array<SharedArrayBuffer>
+  | Int16Array<SharedArrayBuffer>
+  | Uint16Array<SharedArrayBuffer>
+  | Int32Array<SharedArrayBuffer>
+  | Uint32Array<SharedArrayBuffer>
+  | BigInt64Array<SharedArrayBuffer>
+  | BigUint64Array<SharedArrayBuffer>;
 
-export type FlagArray = Exclude<AtomicArray, BigInt64Array | BigUint64Array>;
+export type FlagArray = Exclude<
+  AtomicArray,
+  BigInt64Array<SharedArrayBuffer> | BigUint64Array<SharedArrayBuffer>
+>;
 
-// Atomics' overloads reject a union of number and BigInt views, so the shared
-// signatures are asserted once here and keep the element type of the view.
-const ops = Atomics as unknown as {
-  load<T extends AtomicArray>(ta: T, i: number): T[number];
-  store<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number];
-  exchange<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number];
-  compareExchange<T extends AtomicArray>(ta: T, i: number, expected: T[number], desired: T[number]): T[number];
-  add<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number];
-  sub<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number];
-  and<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number];
-  or<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number];
-  xor<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number];
-};
+// Atomics accepts any buffer and its overloads reject a union of number and
+// BigInt views, so each ported name is that function with the shared-buffer
+// type pinned once instead of a hand-written wrapper per operation.
+type Load = <T extends AtomicArray>(ta: T, i: number) => T[number];
+type Store = <T extends AtomicArray>(ta: T, i: number, val: T[number]) => void;
+type Fetch = <T extends AtomicArray>(ta: T, i: number, val: T[number]) => T[number];
 
-export function __atomic_load_n<T extends AtomicArray>(ta: T, i: number): T[number] {
-  return ops.load(ta, i);
-}
+const compareExchange = Atomics.compareExchange as <T extends AtomicArray>(
+  ta: T,
+  i: number,
+  expected: T[number],
+  desired: T[number],
+) => T[number];
 
-export function __atomic_store_n<T extends AtomicArray>(ta: T, i: number, val: T[number]): void {
-  ops.store(ta, i, val);
-}
-
-export function __atomic_exchange_n<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number] {
-  return ops.exchange(ta, i, val);
-}
+export const __atomic_load_n = Atomics.load as Load;
+export const __atomic_store_n = Atomics.store as Store;
+export const __atomic_exchange_n = Atomics.exchange as Fetch;
 
 // No `weak` argument: a single attempt can never fail spuriously. The result is
 // discriminated instead of being written back into `expected` like C does.
@@ -50,39 +45,27 @@ export function __atomic_compare_exchange_n<T extends AtomicArray>(
   expected: T[number],
   desired: T[number],
 ): { ok: true } | { ok: false; expected: T[number] } {
-  const got = ops.compareExchange(ta, i, expected, desired);
+  const got = compareExchange(ta, i, expected, desired);
   return got === expected ? { ok: true } : { ok: false, expected: got };
 }
 
-export function __atomic_fetch_add<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number] {
-  return ops.add(ta, i, val);
-}
-
-export function __atomic_fetch_sub<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number] {
-  return ops.sub(ta, i, val);
-}
-
-export function __atomic_fetch_and<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number] {
-  return ops.and(ta, i, val);
-}
-
-export function __atomic_fetch_or<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number] {
-  return ops.or(ta, i, val);
-}
-
-export function __atomic_fetch_xor<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number] {
-  return ops.xor(ta, i, val);
-}
+export const __atomic_fetch_add = Atomics.add as Fetch;
+export const __atomic_fetch_sub = Atomics.sub as Fetch;
+export const __atomic_fetch_and = Atomics.and as Fetch;
+export const __atomic_fetch_or = Atomics.or as Fetch;
+export const __atomic_fetch_xor = Atomics.xor as Fetch;
 
 // No Atomics.nand, so read-modify-write by hand: ptr = ~(old & val).
 export function __atomic_fetch_nand<T extends AtomicArray>(ta: T, i: number, val: T[number]): T[number] {
-  for (let old = ops.load(ta, i); ; ) {
-    // The assertions only satisfy tsc: a val of the wrong type still throws,
-    // because JS will not mix number and bigint in one operator.
+  const isBig = ta instanceof BigInt64Array || ta instanceof BigUint64Array;
+  if (isBig !== (typeof val === 'bigint')) {
+    throw new TypeError('__atomic_fetch_nand: value type must match the view');
+  }
+  for (let old = __atomic_load_n(ta, i); ; ) {
     const next = (
       typeof old === 'bigint' ? ~(old & (val as bigint)) : ~(old & (val as number))
     ) as T[number];
-    const got = ops.compareExchange(ta, i, old, next);
+    const got = compareExchange(ta, i, old, next);
     if (got === old) return old;
     old = got;
   }
@@ -90,11 +73,11 @@ export function __atomic_fetch_nand<T extends AtomicArray>(ta: T, i: number, val
 
 // Returns true when the flag was already set, matching C.
 export function __atomic_test_and_set(ta: FlagArray, i: number): boolean {
-  return ops.exchange(ta, i, 1) !== 0;
+  return Atomics.exchange(ta, i, 1) !== 0;
 }
 
 export function __atomic_clear(ta: FlagArray, i: number): void {
-  ops.store(ta, i, 0);
+  Atomics.store(ta, i, 0);
 }
 
 // C's fences have no JS equivalent, and per-operation seq_cst makes them

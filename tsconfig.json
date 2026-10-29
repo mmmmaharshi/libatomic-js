@@ -6,7 +6,8 @@
     "module": "Preserve",
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
-    "lib": ["ESNext"]
+    "lib": ["ESNext"],
+    "types": ["bun", "node"]
   },
-  "include": ["src/**/*.ts", "types/**/*.ts"]
+  "include": ["src/**/*.ts", "types/**/*.ts", "test/**/*.ts"]
 }
