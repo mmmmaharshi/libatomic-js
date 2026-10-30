@@ -17,9 +17,10 @@ const write128 = (bytes: Uint8Array<SharedArrayBuffer>, offset: number, value: b
 };
 
 function check128(bytes: Uint8Array<SharedArrayBuffer>, offset: number): void {
-  if (offset % 8 !== 0) throw new RangeError('128-bit operation: offset must be 8-aligned');
   if (bytes.byteOffset % 4 !== 0) throw new RangeError('128-bit operation: view must be 4-byte aligned');
-  if (bytes.byteLength < offset + 20) throw new RangeError('128-bit operation: buffer too small');
+  if (offset % 8 !== 0) throw new RangeError('128-bit operation: offset must be 8-aligned');
+  if ((bytes.byteOffset + offset) % 8 !== 0) throw new RangeError('128-bit operation: value must be 8-byte aligned');
+  if (bytes.byteLength < offset + 24) throw new RangeError('128-bit operation: buffer too small');
 }
 
 const lock128 = (bytes: Uint8Array<SharedArrayBuffer>, offset: number): void => {

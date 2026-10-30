@@ -97,6 +97,23 @@ test('compareExchange reports success and the observed value', () => {
   assert.equal(load(a, 0), 6);
 });
 
+test('compareExchange wraps expected and desired to the element width', () => {
+  const u8 = bytes(1);
+  store(u8, 0, 0);
+  assert.deepEqual(compareExchange(u8, 0, 256, 1), { ok: true });
+  assert.equal(load(u8, 0), 1);
+
+  const i8 = new Int8Array(new SharedArrayBuffer(1));
+  store(i8, 0, -1);
+  assert.deepEqual(compareExchange(i8, 0, 255, 5), { ok: true });
+  assert.equal(load(i8, 0), 5);
+
+  const u32 = new Uint32Array(new SharedArrayBuffer(4));
+  store(u32, 0, 0);
+  assert.deepEqual(compareExchange(u32, 0, 0x100000000, 7), { ok: true });
+  assert.equal(load(u32, 0), 7);
+});
+
 test('fetch operations return the old value and wrap at the element width', () => {
   const a = bytes(1);
   store(a, 0, 250);
@@ -232,6 +249,16 @@ test('testAndSet and clear drive a flag byte', () => {
   assert.equal(testAndSet(a, 0), true);
   clear(a, 0);
   assert.equal(load(a, 0), 0);
+});
+
+test('128-bit operations reject misaligned buffers and small buffers', () => {
+  const base = new Uint8Array(new SharedArrayBuffer(32));
+  const misaligned = base.subarray(4);
+  assert.throws(() => store128(misaligned, 0, 1n), RangeError);
+  assert.throws(() => load128(misaligned, 0), RangeError);
+
+  const small = new Uint8Array(new SharedArrayBuffer(20));
+  assert.throws(() => store128(small, 0, 1n), RangeError);
 });
 
 test('reports which widths are lock-free and rejects invalid sizes', () => {

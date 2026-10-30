@@ -4,6 +4,6 @@
   "license": "MIT",
   "exports": "./src/libatomic.ts",
   "publish": {
-    "include": ["src/libatomic.ts", "README.md", "LICENSE"]
+    "include": ["src/**/*.ts", "README.md", "LICENSE"]
   }
 }

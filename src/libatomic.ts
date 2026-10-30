@@ -163,8 +163,9 @@ export function compareExchange<T extends AtomicArray>(
     const gotF = bitsToF64(got);
     return got === expBits ? { ok: true } : { ok: false, expected: gotF };
   }
-  const got = casInt(ta as unknown as IntegerArray & T, i, expected as (IntegerArray & T)[number], desired as (IntegerArray & T)[number]);
-  return got === expected ? { ok: true } : { ok: false, expected: got };
+  const expectedWrapped = wrap(ta as unknown as IntegerArray & T, expected as number | bigint) as (IntegerArray & T)[number];
+  const got = casInt(ta as unknown as IntegerArray & T, i, expectedWrapped, desired as (IntegerArray & T)[number]);
+  return got === expectedWrapped ? { ok: true } : { ok: false, expected: got };
 }
 
 /** Adds `val` and returns the previous value. */

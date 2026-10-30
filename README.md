@@ -71,10 +71,10 @@ for (let expected = 0; ;) {
   because JS ignores extra arguments.
 - Values must match the view. `store(bigUint64, 0, 5)` fails to compile and throws a
   runtime `TypeError`. Pass `5n` instead.
-- Stores wrap and compare-exchanges do not. `store(u8, 0, 256)` stores `0`, while
-  `compareExchange(u8, 0, 256, 1)` compares exactly and reports `ok: false` with
-  `expected: 0`. Signed views work the same way. `255` and `-1` are one bit pattern, and only
-  `-1` matches. Compare against the value a load returned and the difference never comes up.
+- Stores and compare-exchanges wrap to the element width. `store(u8, 0, 256)` stores `0`.
+  `compareExchange(u8, 0, 256, 1)` wraps `expected` to `0` and succeeds, writing `1`. Signed
+  views work the same way. `255` and `-1` are one bit pattern, and only `-1` matches. Compare
+  against the value a load returned and the difference never comes up.
 - Not ported:
   - The generic memory-buffer forms `__atomic_load`, `__atomic_store` and `__atomic_compare_exchange`.
     They take a `(size, ptr)` pair and work on any data type, but the typed array already carries
