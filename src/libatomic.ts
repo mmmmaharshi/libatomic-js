@@ -8,6 +8,11 @@
  * @module
  */
 
+import {
+  f32Bits, bitsToF32, f64Bits, bitsToF64,
+  floatAdd32, floatSub32, floatAdd64, floatSub64,
+} from './float.ts';
+
 /**
  * A view over a `SharedArrayBuffer` whose elements can be operated on
  * atomically. The element type sets the width.
@@ -85,60 +90,7 @@ const fetchAndInt = Atomics.and as FetchInt;
 const fetchOrInt = Atomics.or as FetchInt;
 const fetchXorInt = Atomics.xor as FetchInt;
 
-// --- floating point bit reinterpretation helpers -----------------------------
-
-const f32Buf = new ArrayBuffer(4);
-const f32i = new Int32Array(f32Buf);
-const f32f = new Float32Array(f32Buf);
-const f64Buf = new ArrayBuffer(8);
-const f64i = new BigInt64Array(f64Buf);
-const f64f = new Float64Array(f64Buf);
-
-function f32Bits(v: number): number { f32f[0] = v; return f32i[0]; }
-function bitsToF32(b: number): number { f32i[0] = b; return f32f[0]; }
-function f64Bits(v: number): bigint { f64f[0] = v; return f64i[0]; }
-function bitsToF64(b: bigint): number { f64i[0] = b; return f64f[0]; }
-
-// --- float CAS helpers (return { old, next }) -------------------------------
-
-function floatAdd32(iv: Int32Array<SharedArrayBuffer>, i: number, val: number): { old: number; next: number } {
-  for (let oldBits = Atomics.load(iv, i); ; ) {
-    const oldVal = bitsToF32(oldBits);
-    const nextVal = oldVal + val;
-    const nextBits = f32Bits(nextVal);
-    const got = Atomics.compareExchange(iv, i, oldBits, nextBits);
-    if (got === oldBits) return { old: oldVal, next: nextVal };
-  }
-}
-function floatSub32(iv: Int32Array<SharedArrayBuffer>, i: number, val: number): { old: number; next: number } {
-  for (let oldBits = Atomics.load(iv, i); ; ) {
-    const oldVal = bitsToF32(oldBits);
-    const nextVal = oldVal - val;
-    const nextBits = f32Bits(nextVal);
-    const got = Atomics.compareExchange(iv, i, oldBits, nextBits);
-    if (got === oldBits) return { old: oldVal, next: nextVal };
-  }
-}
-function floatAdd64(iv: BigInt64Array<SharedArrayBuffer>, i: number, val: number): { old: number; next: number } {
-  for (let oldBits = Atomics.load(iv, i); ; ) {
-    const oldVal = bitsToF64(oldBits);
-    const nextVal = oldVal + val;
-    const nextBits = f64Bits(nextVal);
-    const got = Atomics.compareExchange(iv, i, oldBits, nextBits);
-    if (got === oldBits) return { old: oldVal, next: nextVal };
-  }
-}
-function floatSub64(iv: BigInt64Array<SharedArrayBuffer>, i: number, val: number): { old: number; next: number } {
-  for (let oldBits = Atomics.load(iv, i); ; ) {
-    const oldVal = bitsToF64(oldBits);
-    const nextVal = oldVal - val;
-    const nextBits = f64Bits(nextVal);
-    const got = Atomics.compareExchange(iv, i, oldBits, nextBits);
-    if (got === oldBits) return { old: oldVal, next: nextVal };
-  }
-}
-
-// --- public API -------------------------------------------------------------
+// --- public API (integers + float dispatch) ---------------------------------
 
 /** Reads the element at `i`. */
 export function load<T extends AtomicArray>(ta: T, i: number): T[number] {
@@ -186,6 +138,8 @@ export function exchange<T extends AtomicArray>(ta: T, i: number, val: T[number]
  *
  * No `weak` argument: a single attempt can never fail spuriously. The result is
  * discriminated instead of being written back into `expected` like C does.
+ * Comparison is on the bit pattern, matching libatomic; two NaNs with different
+ * bit patterns do not compare equal.
  *
  * @returns `{ ok: true }`, or `{ ok: false, expected }` with the value found.
  */
@@ -256,7 +210,7 @@ function nand<T extends IntegerArray>(
 ): { old: T[number]; next: T[number] } {
   const isBig = isBigIntView(ta);
   if (isBig !== (typeof val === 'bigint')) {
-    throw new TypeError('nand: value type must match the view');
+    throw new TypeError('fetchNand: value type must match the view');
   }
   for (let old = loadInt(ta, i) as T[number]; ; ) {
     const raw = isBig
@@ -340,204 +294,10 @@ export function nandFetch<T extends IntegerArray>(ta: T, i: number, val: T[numbe
 // A 128-bit value is stored as two BigInt64 slots. Atomicity is provided by a
 // spinlock in the four bytes immediately after the value, so a caller allocates
 // 24 bytes per value: bytes 0-15 are the value, bytes 16-19 are the lock word
-// (must be zero-initialised). Values must start 8-byte aligned.
+// (must be zero-initialised). Values must start 8-byte aligned and the view must
+// start at a 4-byte-aligned offset.
 
-const read128 = (bytes: Uint8Array<SharedArrayBuffer>, offset: number): bigint => {
-  const v = new BigInt64Array(bytes.buffer, bytes.byteOffset + offset, 2);
-  return (BigInt.asUintN(64, v[1]) << 64n) | BigInt.asUintN(64, v[0]);
-};
-const write128 = (bytes: Uint8Array<SharedArrayBuffer>, offset: number, value: bigint): void => {
-  const v = new BigInt64Array(bytes.buffer, bytes.byteOffset + offset, 2);
-  v[0] = BigInt.asIntN(64, value);
-  v[1] = BigInt.asIntN(64, value >> 64n);
-};
-const lock128 = (bytes: Uint8Array<SharedArrayBuffer>, offset: number): void => {
-  const slot = new Int32Array(bytes.buffer, bytes.byteOffset + offset + 16, 1);
-  while (Atomics.compareExchange(slot, 0, 0, 1) !== 0) { /* spin */ }
-};
-const unlock128 = (bytes: Uint8Array<SharedArrayBuffer>, offset: number): void => {
-  const slot = new Int32Array(bytes.buffer, bytes.byteOffset + offset + 16, 1);
-  Atomics.store(slot, 0, 0);
-};
-
-function check128(bytes: Uint8Array<SharedArrayBuffer>, offset: number): void {
-  if (offset % 8 !== 0) throw new RangeError('128-bit operation: offset must be 8-aligned');
-  if (bytes.byteLength < offset + 20) throw new RangeError('128-bit operation: buffer too small');
-}
-
-/** Reads the 128-bit value at `offset`. */
-export function load128(bytes: Uint8Array<SharedArrayBuffer>, offset: number): bigint {
-  check128(bytes, offset);
-  lock128(bytes, offset);
-  const r = read128(bytes, offset);
-  unlock128(bytes, offset);
-  return r;
-}
-
-/** Writes `val` to `offset`. */
-export function store128(bytes: Uint8Array<SharedArrayBuffer>, offset: number, val: bigint): void {
-  check128(bytes, offset);
-  lock128(bytes, offset);
-  write128(bytes, offset, val);
-  unlock128(bytes, offset);
-}
-
-/** Writes `val` and returns the value it replaced. */
-export function exchange128(bytes: Uint8Array<SharedArrayBuffer>, offset: number, val: bigint): bigint {
-  check128(bytes, offset);
-  lock128(bytes, offset);
-  const old = read128(bytes, offset);
-  write128(bytes, offset, val);
-  unlock128(bytes, offset);
-  return old;
-}
-
-/** Writes `desired` only if the slot still holds `expected`. */
-export function compareExchange128(
-  bytes: Uint8Array<SharedArrayBuffer>,
-  offset: number,
-  expected: bigint,
-  desired: bigint,
-): { ok: true } | { ok: false; expected: bigint } {
-  check128(bytes, offset);
-  lock128(bytes, offset);
-  const got = read128(bytes, offset);
-  if (got === expected) write128(bytes, offset, desired);
-  unlock128(bytes, offset);
-  return got === expected ? { ok: true } : { ok: false, expected: got };
-}
-
-/** Adds `val` and returns the previous value. */
-export function fetchAdd128(bytes: Uint8Array<SharedArrayBuffer>, offset: number, val: bigint): bigint {
-  check128(bytes, offset);
-  lock128(bytes, offset);
-  const old = read128(bytes, offset);
-  const mask = (1n << 128n) - 1n;
-  write128(bytes, offset, (old + val) & mask);
-  unlock128(bytes, offset);
-  return old;
-}
-
-/** Subtracts `val` and returns the previous value. */
-export function fetchSub128(bytes: Uint8Array<SharedArrayBuffer>, offset: number, val: bigint): bigint {
-  check128(bytes, offset);
-  lock128(bytes, offset);
-  const old = read128(bytes, offset);
-  const mask = (1n << 128n) - 1n;
-  write128(bytes, offset, (old - val) & mask);
-  unlock128(bytes, offset);
-  return old;
-}
-
-/** Bitwise ANDs `val` and returns the previous value. */
-export function fetchAnd128(bytes: Uint8Array<SharedArrayBuffer>, offset: number, val: bigint): bigint {
-  check128(bytes, offset);
-  lock128(bytes, offset);
-  const old = read128(bytes, offset);
-  write128(bytes, offset, old & val);
-  unlock128(bytes, offset);
-  return old;
-}
-
-/** Bitwise ORs `val` and returns the previous value. */
-export function fetchOr128(bytes: Uint8Array<SharedArrayBuffer>, offset: number, val: bigint): bigint {
-  check128(bytes, offset);
-  lock128(bytes, offset);
-  const old = read128(bytes, offset);
-  write128(bytes, offset, old | val);
-  unlock128(bytes, offset);
-  return old;
-}
-
-/** Bitwise XORs `val` and returns the previous value. */
-export function fetchXor128(bytes: Uint8Array<SharedArrayBuffer>, offset: number, val: bigint): bigint {
-  check128(bytes, offset);
-  lock128(bytes, offset);
-  const old = read128(bytes, offset);
-  write128(bytes, offset, old ^ val);
-  unlock128(bytes, offset);
-  return old;
-}
-
-/** Stores `~(old & val)` and returns the previous value. */
-export function fetchNand128(bytes: Uint8Array<SharedArrayBuffer>, offset: number, val: bigint): bigint {
-  check128(bytes, offset);
-  lock128(bytes, offset);
-  const old = read128(bytes, offset);
-  const mask = (1n << 128n) - 1n;
-  write128(bytes, offset, (~ (old & val)) & mask);
-  unlock128(bytes, offset);
-  return old;
-}
-
-/** Adds `val` and returns the new value. */
-export function addFetch128(bytes: Uint8Array<SharedArrayBuffer>, offset: number, val: bigint): bigint {
-  check128(bytes, offset);
-  lock128(bytes, offset);
-  const old = read128(bytes, offset);
-  const mask = (1n << 128n) - 1n;
-  const next = (old + val) & mask;
-  write128(bytes, offset, next);
-  unlock128(bytes, offset);
-  return next;
-}
-
-/** Subtracts `val` and returns the new value. */
-export function subFetch128(bytes: Uint8Array<SharedArrayBuffer>, offset: number, val: bigint): bigint {
-  check128(bytes, offset);
-  lock128(bytes, offset);
-  const old = read128(bytes, offset);
-  const mask = (1n << 128n) - 1n;
-  const next = (old - val) & mask;
-  write128(bytes, offset, next);
-  unlock128(bytes, offset);
-  return next;
-}
-
-/** Bitwise ANDs `val` and returns the new value. */
-export function andFetch128(bytes: Uint8Array<SharedArrayBuffer>, offset: number, val: bigint): bigint {
-  check128(bytes, offset);
-  lock128(bytes, offset);
-  const old = read128(bytes, offset);
-  const next = old & val;
-  write128(bytes, offset, next);
-  unlock128(bytes, offset);
-  return next;
-}
-
-/** Bitwise ORs `val` and returns the new value. */
-export function orFetch128(bytes: Uint8Array<SharedArrayBuffer>, offset: number, val: bigint): bigint {
-  check128(bytes, offset);
-  lock128(bytes, offset);
-  const old = read128(bytes, offset);
-  const next = old | val;
-  write128(bytes, offset, next);
-  unlock128(bytes, offset);
-  return next;
-}
-
-/** Bitwise XORs `val` and returns the new value. */
-export function xorFetch128(bytes: Uint8Array<SharedArrayBuffer>, offset: number, val: bigint): bigint {
-  check128(bytes, offset);
-  lock128(bytes, offset);
-  const old = read128(bytes, offset);
-  const next = old ^ val;
-  write128(bytes, offset, next);
-  unlock128(bytes, offset);
-  return next;
-}
-
-/** Stores `~(old & val)` and returns the new value. */
-export function nandFetch128(bytes: Uint8Array<SharedArrayBuffer>, offset: number, val: bigint): bigint {
-  check128(bytes, offset);
-  lock128(bytes, offset);
-  const old = read128(bytes, offset);
-  const mask = (1n << 128n) - 1n;
-  const next = (~ (old & val)) & mask;
-  write128(bytes, offset, next);
-  unlock128(bytes, offset);
-  return next;
-}
+export * from './int128.ts';
 
 // --- flag helpers -----------------------------------------------------------
 

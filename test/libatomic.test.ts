@@ -30,6 +30,10 @@ import {
   compareExchange128,
   fetchAdd128,
   addFetch128,
+  fetchAnd128,
+  fetchOr128,
+  fetchXor128,
+  fetchNand128,
 } from '../src/libatomic.ts';
 
 const bytes = (n: number) => new Uint8Array(new SharedArrayBuffer(n));
@@ -210,6 +214,16 @@ test('128-bit fetch and new-value ops wrap at 128 bits', () => {
   assert.equal(load128(buf, 0), 0n);
   assert.equal(addFetch128(buf, 0, 5n), 5n);
   assert.equal(load128(buf, 0), 5n);
+});
+
+test('128-bit bitwise ops work', () => {
+  const buf = new Uint8Array(new SharedArrayBuffer(32));
+  store128(buf, 0, 0b1100n);
+  assert.equal(fetchAnd128(buf, 0, 0b1010n), 0b1100n);
+  assert.equal(load128(buf, 0), 0b1000n);
+  assert.equal(fetchOr128(buf, 0, 0b0011n), 0b1000n);
+  assert.equal(fetchXor128(buf, 0, 0b1111n), 0b1011n);
+  assert.equal(fetchNand128(buf, 0, 0b1010n), 0b0100n);
 });
 
 test('testAndSet and clear drive a flag byte', () => {

@@ -50,7 +50,7 @@ The right column is the whole mapping you need when porting a C call site.
 | `load128` / `store128` / `exchange128` / `compareExchange128` | operate on a `Uint8Array` over 24 bytes (16 value, 4-byte lock) | spinlock, because JS has no 128-bit atomic |
 | `fetchAdd128` / `fetchSub128` / `fetchAnd128` / `fetchOr128` / `fetchXor128` / `fetchNand128` | same | return the previous value |
 | `addFetch128` / `subFetch128` / `andFetch128` / `orFetch128` / `xorFetch128` / `nandFetch128` | same | return the new value |
-| `isLockFree` | `__atomic_is_lock_free` | true for 1, 2, 4 and 8 byte sizes. Throws on a non-positive or non-integer size |
+| `isLockFree` | `__atomic_is_lock_free` | true for 1, 2, 4 and 8 byte sizes. Throws on a non-positive or non-integer size. Floats use a CAS loop on the integer view, so they are lock-free only where the underlying integer width is |
 | `alwaysLockFree` | `__atomic_always_lock_free` | same answer as `isLockFree`; JS has no compile-time variant to offer |
 
 Retrying a compare-exchange reads the value it observed. C writes that value back through
