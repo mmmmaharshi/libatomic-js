@@ -24,6 +24,12 @@ import {
   signalFence,
   isLockFree,
   alwaysLockFree,
+  load128,
+  store128,
+  exchange128,
+  compareExchange128,
+  fetchAdd128,
+  addFetch128,
 } from '../src/libatomic.ts';
 
 const bytes = (n: number) => new Uint8Array(new SharedArrayBuffer(n));
@@ -166,6 +172,44 @@ test('fences and alwaysLockFree exist for parity', () => {
   signalFence();
   assert.equal(alwaysLockFree(8), isLockFree(8));
   assert.equal(alwaysLockFree(16), false);
+});
+
+test('float views load, store and exchange atomically', () => {
+  const a = new Float32Array(new SharedArrayBuffer(4));
+  store(a, 0, 1.5);
+  assert.equal(load(a, 0), 1.5);
+  assert.equal(exchange(a, 0, 2.25), 1.5);
+  assert.equal(load(a, 0), 2.25);
+  assert.deepEqual(compareExchange(a, 0, 2.25, 3.0), { ok: true });
+  assert.deepEqual(compareExchange(a, 0, 99.0, 4.0), { ok: false, expected: 3.0 });
+});
+
+test('float fetchAdd and addFetch return old and new values', () => {
+  const a = new Float64Array(new SharedArrayBuffer(8));
+  store(a, 0, 1.0);
+  assert.equal(fetchAdd(a, 0, 2.0), 1.0);
+  assert.equal(load(a, 0), 3.0);
+  assert.equal(addFetch(a, 0, 4.0), 7.0);
+  assert.equal(load(a, 0), 7.0);
+});
+
+test('128-bit values load, store and exchange', () => {
+  const buf = new Uint8Array(new SharedArrayBuffer(32));
+  store128(buf, 0, 1n);
+  assert.equal(load128(buf, 0), 1n);
+  assert.equal(exchange128(buf, 0, 2n), 1n);
+  assert.equal(load128(buf, 0), 2n);
+  assert.deepEqual(compareExchange128(buf, 0, 2n, 3n), { ok: true });
+  assert.equal(load128(buf, 0), 3n);
+});
+
+test('128-bit fetch and new-value ops wrap at 128 bits', () => {
+  const buf = new Uint8Array(new SharedArrayBuffer(32));
+  store128(buf, 0, (1n << 127n));
+  assert.equal(fetchAdd128(buf, 0, (1n << 127n)), 1n << 127n);
+  assert.equal(load128(buf, 0), 0n);
+  assert.equal(addFetch128(buf, 0, 5n), 5n);
+  assert.equal(load128(buf, 0), 5n);
 });
 
 test('testAndSet and clear drive a flag byte', () => {

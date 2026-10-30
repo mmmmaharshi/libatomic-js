@@ -1,6 +1,6 @@
 {
   "name": "libatomic-js",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "type": "module",
   "license": "MIT",
   "exports": "./src/libatomic.ts",

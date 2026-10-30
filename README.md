@@ -45,6 +45,11 @@ The right column is the whole mapping you need when porting a C call site.
 | `addFetch` / `subFetch` / `andFetch` / `orFetch` / `xorFetch` | `__atomic_add_fetch`, `_sub_fetch`, `_and_fetch`, `_or_fetch`, `_xor_fetch` | return the new value |
 | `nandFetch` | `__atomic_nand_fetch` | return the new value; a CAS loop |
 | `threadFence`, `signalFence` | `__atomic_thread_fence`, `__atomic_signal_fence` | no-ops: every operation is already sequentially consistent, so a fence has nothing left to order |
+| `load` / `store` / `exchange` / `compareExchange` | also accept `Float32Array` and `Float64Array` views | reinterpreted through an integer view and a CAS loop, since `Atomics` has no float ops |
+| `fetchAdd` / `fetchSub` / `addFetch` / `subFetch` | also accept float views | CAS loop on the integer view |
+| `load128` / `store128` / `exchange128` / `compareExchange128` | operate on a `Uint8Array` over 24 bytes (16 value, 4-byte lock) | spinlock, because JS has no 128-bit atomic |
+| `fetchAdd128` / `fetchSub128` / `fetchAnd128` / `fetchOr128` / `fetchXor128` / `fetchNand128` | same | return the previous value |
+| `addFetch128` / `subFetch128` / `andFetch128` / `orFetch128` / `xorFetch128` / `nandFetch128` | same | return the new value |
 | `isLockFree` | `__atomic_is_lock_free` | true for 1, 2, 4 and 8 byte sizes. Throws on a non-positive or non-integer size |
 | `alwaysLockFree` | `__atomic_always_lock_free` | same answer as `isLockFree`; JS has no compile-time variant to offer |
 
@@ -71,10 +76,13 @@ for (let expected = 0; ;) {
   `expected: 0`. Signed views work the same way. `255` and `-1` are one bit pattern, and only
   `-1` matches. Compare against the value a load returned and the difference never comes up.
 - Not ported:
-  - 16-byte `__int128` operations, because JS has no 16-byte atomic.
   - The generic memory-buffer forms `__atomic_load`, `__atomic_store` and `__atomic_compare_exchange`.
     They take a `(size, ptr)` pair and work on any data type, but the typed array already carries
     the size and the element type, so those are the same call with the size removed.
+  - 16-byte `__int128` operations are ported as `*128` functions that take a `Uint8Array` over
+    24 bytes (16 value, 4-byte lock) and use a spinlock, because JS has no 128-bit atomic.
+  - Float and double views are supported on the main `load`/`store`/`exchange`/`compareExchange`/
+    `fetchAdd`/`fetchSub`/`addFetch`/`subFetch` functions, reinterpreted through an integer view.
   - `__atomic_thread_fence` and `__atomic_signal_fence` are exported as no-ops, because every
     operation here is sequentially consistent and there is nothing left for a fence to order.
 

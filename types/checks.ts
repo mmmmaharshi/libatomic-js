@@ -8,6 +8,7 @@ import {
   xorFetch,
   nandFetch,
   fetchNand,
+  fetchAnd,
   load,
   store,
   testAndSet,
@@ -38,6 +39,10 @@ andFetch(counter, 0, 5n);
 orFetch(counter, 0, 5n);
 // @ts-expect-error the new-value xor follows the view too
 xorFetch(counter, 0, 5n);
+// @ts-expect-error a plain ArrayBuffer view shares nothing, so it is not atomic
+load(new Uint32Array(4), 0);
+// @ts-expect-error bitwise ops are not defined for float views
+fetchAnd(new Float32Array(new SharedArrayBuffer(4)), 0, 1);
 
 // The element type flows back out, so arithmetic needs no narrowing.
 const small = load(counter, 0) + 1;
