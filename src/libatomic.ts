@@ -44,10 +44,17 @@ function wrap<T extends AtomicArray>(ta: T, v: number | bigint): T[number] {
   if (typeof v === 'bigint') {
     return (ta instanceof BigInt64Array ? BigInt.asIntN(64, v) : BigInt.asUintN(64, v)) as T[number];
   }
-  const width = 2 ** (ta.BYTES_PER_ELEMENT * 8);
-  const u = ((v % width) + width) % width;
+  // Fast path: most values already fit, so skip the modulo.
   const signed = ta instanceof Int8Array || ta instanceof Int16Array || ta instanceof Int32Array;
-  return (signed && u >= width / 2 ? u - width : u) as T[number];
+  const width = 2 ** (ta.BYTES_PER_ELEMENT * 8);
+  const half = width / 2;
+  if (signed) {
+    if (v >= -half && v < half) return v as T[number];
+  } else {
+    if (v >= 0 && v < width) return v as T[number];
+  }
+  const u = ((v % width) + width) % width;
+  return (signed && u >= half ? u - width : u) as T[number];
 }
 
 const cas = Atomics.compareExchange as <T extends AtomicArray>(
