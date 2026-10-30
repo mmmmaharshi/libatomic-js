@@ -1,5 +1,7 @@
 # libatomic-js
 
+[![JSR](https://jsr.io/badges/@maharshi/libatomic-js)](https://jsr.io/@maharshi/libatomic-js)
+
 TypeScript port of GCC libatomic's integer builtins. It runs on `SharedArrayBuffer` and `Atomics`,
 and Bun strips the types at run time, so there is no build step and no `dist`.
 
